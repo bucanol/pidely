@@ -63,7 +63,7 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // await seedDatabase(); // <--- ÚNICO CAMBIO: Comentado para evitar el error ENOENT en Render
+  // await seedDatabase(); // <--- LÍNEA COMENTADA PARA EVITAR ERROR ENOENT EN RENDER
   setupAuth(app);
   setupWebSocket(httpServer);
   await registerRoutes(httpServer, app);
