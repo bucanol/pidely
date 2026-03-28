@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { storage } from "./storage";
 
-const GEMINI_URL = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent";
+const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 async function callGemini(prompt: string): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -16,8 +16,8 @@ async function callGemini(prompt: string): Promise<string> {
   });
 
   const data = await res.json() as any;
-  console.log("Gemini response:", JSON.stringify(data));
-return data?.candidates?.[0]?.content?.parts?.[0]?.text || JSON.stringify(data);
+  if (data?.error) throw new Error(data.error.message);
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text || "No pude generar una respuesta.";
 }
 
 export async function handleAIChat(req: Request, res: Response) {
