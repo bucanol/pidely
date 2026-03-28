@@ -9,6 +9,7 @@ import path from "path";
 import { randomUUID } from "crypto";
 import express from "express";
 import bcrypt from "bcryptjs";
+import { handleAIChat } from "./ai";
 
 const uploadStorage = multer.diskStorage({
   destination: "uploads/",
@@ -381,6 +382,8 @@ export async function registerRoutes(
     await storage.deleteUser(req.params.id);
     res.status(204).send();
   });
+
+  app.post("/api/admin/ai/chat", requireAuth, handleAIChat);
 
   return httpServer;
 }

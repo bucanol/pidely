@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { ChefHat, UtensilsCrossed, LayoutGrid, BarChart3, Receipt, LogOut, Settings, Users } from "lucide-react";
+import { ChefHat, UtensilsCrossed, LayoutGrid, BarChart3, Receipt, LogOut, Settings, Users, Bot } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
 const ALL_NAV_ITEMS = [
@@ -10,6 +10,7 @@ const ALL_NAV_ITEMS = [
   { href: "/admin/historial", label: "Historial", icon: Receipt, roles: ["owner"] },
   { href: "/admin/equipo", label: "Equipo", icon: Users, roles: ["owner"] },
   { href: "/admin/ajustes", label: "Ajustes", icon: Settings, roles: ["owner"] },
+  { href: "/admin/asistente", label: "Asistente", icon: Bot, roles: ["owner", "waiter", "cook"] },
 ];
 
 export default function AdminNav() {

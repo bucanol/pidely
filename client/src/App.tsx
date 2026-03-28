@@ -13,6 +13,7 @@ import AdminAnalyticsPage from "@/pages/admin-analytics";
 import AdminSettingsPage from "@/pages/admin-settings";
 import AdminHistoryPage from "@/pages/admin-history";
 import AdminTeamPage from "@/pages/admin-team";
+import AdminAIPage from "@/pages/admin-ai";
 import AuthPage from "@/pages/auth-page";
 import HomePage from "@/pages/home";
 import { Loader2 } from "lucide-react";
@@ -20,9 +21,9 @@ import { useLocation } from "wouter";
 import { useEffect } from "react";
 
 const ROLE_ACCESS: Record<string, string[]> = {
-  owner: ["/admin/cocina", "/admin/menu", "/admin/mesas", "/admin/ventas", "/admin/ajustes", "/admin/historial", "/admin/equipo"],
-  waiter: ["/admin/cocina", "/admin/mesas"],
-  cook: ["/admin/cocina"],
+  owner: ["/admin/cocina", "/admin/menu", "/admin/mesas", "/admin/ventas", "/admin/ajustes", "/admin/historial", "/admin/equipo", "/admin/asistente"],
+  waiter: ["/admin/cocina", "/admin/mesas", "/admin/asistente"],
+  cook: ["/admin/cocina", "/admin/asistente"],
 };
 
 function ProtectedRoute({ component: Component, path }: { component: React.ComponentType; path?: string }) {
@@ -90,6 +91,7 @@ function Router() {
       <Route path="/admin/ajustes">{() => <ProtectedRoute component={AdminSettingsPage} path="/admin/ajustes" />}</Route>
       <Route path="/admin/historial">{() => <ProtectedRoute component={AdminHistoryPage} path="/admin/historial" />}</Route>
       <Route path="/admin/equipo">{() => <ProtectedRoute component={AdminTeamPage} path="/admin/equipo" />}</Route>
+      <Route path="/admin/asistente">{() => <ProtectedRoute component={AdminAIPage} path="/admin/asistente" />}</Route>
       <Route path="/:slug/mesa/:tableId" component={MenuPage} />
       <Route component={NotFound} />
     </Switch>
