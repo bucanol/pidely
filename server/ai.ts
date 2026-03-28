@@ -16,7 +16,8 @@ async function callGemini(prompt: string): Promise<string> {
   });
 
   const data = await res.json() as any;
-  return data?.candidates?.[0]?.content?.parts?.[0]?.text || "No pude generar una respuesta.";
+  console.log("Gemini response:", JSON.stringify(data));
+return data?.candidates?.[0]?.content?.parts?.[0]?.text || JSON.stringify(data);
 }
 
 export async function handleAIChat(req: Request, res: Response) {
