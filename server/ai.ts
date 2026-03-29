@@ -17,7 +17,7 @@ const tools: any = [
   },
 ];
 
-// USAMOS EL PREFIJO 'models/' QUE ES EL ESTÁNDAR DE GOOGLE CLOUD
+// USAMOS GEMINI-PRO QUE ES EL MÁS ESTABLE
 const model = genAI.getGenerativeModel({ 
   model: "gemini-pro", 
   tools: tools,
@@ -51,7 +51,6 @@ export async function handleAIChat(req: Request, res: Response) {
     let result = await chat.sendMessage(message);
     let response = result.response;
 
-    // REVISAR SI LA IA QUIERE USAR LA FUNCIÓN
     const call = response.candidates?.[0]?.content?.parts?.find(p => p.functionCall);
 
     if (call && call.functionCall) {
@@ -70,7 +69,6 @@ export async function handleAIChat(req: Request, res: Response) {
           return `Mesa ${t.number}: ${tieneOrdenActiva ? 'Ocupada' : 'Libre'}`;
         }).join(", ");
 
-        // RESPUESTA DE LA FUNCIÓN (Formato corregido)
         result = await chat.sendMessage([{
           functionResponse: {
             name: "consultar_mesas",
@@ -87,9 +85,9 @@ export async function handleAIChat(req: Request, res: Response) {
   } catch (err: any) {
     console.error("AI error detalle:", err);
     
-    // Si sale 404 con la llave nueva, es un tema de nombre de modelo
+    // MENSAJE DE ERROR CORREGIDO (Para que no nos mienta)
     if (err.status === 404 || err.message?.includes("not found")) {
-       return res.status(500).json({ error: "Modelo no encontrado. Asegúrate de que el nombre sea 'models/gemini-1.5-flash'." });
+       return res.status(500).json({ error: "Error de conexión con la IA: Modelo no encontrado." });
     }
     
     if (err.message?.includes("429") || err.message?.includes("quota")) {
