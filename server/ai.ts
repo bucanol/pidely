@@ -4,7 +4,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-// 1. DEFINICIÓN DE HERRAMIENTAS (Para que pueda leer las mesas)
+// 1. DEFINICIÓN DE HERRAMIENTAS
 const tools: any = [
   {
     functionDeclarations: [
@@ -16,9 +16,9 @@ const tools: any = [
   },
 ];
 
-// USAMOS EL MODELO QUE YA VIMOS QUE SÍ FUNCIONA
+// USAMOS EL MODELO 2.0 ESTABLE PARA EVITAR CAÍDAS
 const model = genAI.getGenerativeModel({ 
-  model: "gemini-flash-latest", 
+  model: "gemini-2.0-flash", 
   tools: tools,
 });
 
@@ -34,19 +34,21 @@ export async function handleAIChat(req: Request, res: Response) {
     const restaurant = await storage.getRestaurant(restaurantId);
     
     let systemPrompt = `Eres el asistente inteligente de "${restaurant?.name}". `;
-    if (user.role === "owner") systemPrompt += "Tu función es ayudar al Dueño con la gestión.";
+    if (user.role === "owner") systemPrompt += "Tu función es ayudar al Dueño con la gestión del restaurante.";
 
+    // 2. INICIO DEL CHAT CON HISTORIAL LIMPIO
     const chat = model.startChat({
       history: [
         { role: "user", parts: [{ text: systemPrompt }] },
-        { role: "model", parts: [{ text: "Entendido. Soy el asistente de Pidely para " + restaurant?.name + ". ¿En qué puedo apoyarte?" }] },
+        { role: "model", parts: [{ text: "Entendido. Soy el asistente de Pidely para " + restaurant?.name + ". ¿En qué puedo apoyarte hoy?" }] },
       ],
     });
 
+    // 3. ENVIAR MENSAJE DEL USUARIO
     let result = await chat.sendMessage(message);
     let response = result.response;
 
-    // REVISAR SI LA IA QUIERE USAR LA FUNCIÓN DE MESAS
+    // 4. LÓGICA DE HERRAMIENTAS (FUNCTION CALLING)
     const call = response.candidates?.[0]?.content?.parts?.find(p => p.functionCall);
 
     if (call && call.functionCall) {
@@ -56,16 +58,18 @@ export async function handleAIChat(req: Request, res: Response) {
         const tables = await storage.getTablesByRestaurant(restaurantId);
         const orders = await storage.getOrdersByRestaurant(restaurantId);
         
-        const infoMesas = tables.map(t => {
-          const tieneOrdenActiva = orders.some(o => 
-            Number(o.tableId) === t.number && 
-            o.status !== "delivered" && 
-            o.status !== "cancelled"
-          );
-          return `Mesa ${t.number}: ${tieneOrdenActiva ? 'Ocupada' : 'Libre'}`;
-        }).join(", ");
+        const infoMesas = tables.length > 0 
+          ? tables.map(t => {
+              const tieneOrdenActiva = orders.some(o => 
+                Number(o.tableId) === t.number && 
+                o.status !== "delivered" && 
+                o.status !== "cancelled"
+              );
+              return `Mesa ${t.number}: ${tieneOrdenActiva ? 'Ocupada' : 'Libre'}`;
+            }).join(", ")
+          : "No hay mesas registradas en el sistema todavía.";
 
-        // RESPUESTA DE LA FUNCIÓN
+        // ENVIAR LA RESPUESTA DE LA BASE DE DATOS A LA IA
         result = await chat.sendMessage([{
           functionResponse: {
             name: "consultar_mesas",
@@ -76,10 +80,18 @@ export async function handleAIChat(req: Request, res: Response) {
       }
     }
 
+    // 5. RESPUESTA FINAL AL CLIENTE
     res.json({ reply: response.text() });
 
   } catch (err: any) {
     console.error("AI error detalle:", err);
-    res.status(500).json({ error: "Error del asistente. Intenta de nuevo." });
+    
+    // Manejo de errores más descriptivo
+    const status = err.status || 500;
+    const errorMsg = err.status === 503 
+      ? "Google está saturado, intenta de nuevo en 5 segundos." 
+      : "Error del asistente. Por favor, intenta de nuevo.";
+      
+    res.status(status).json({ error: errorMsg });
   }
 }
