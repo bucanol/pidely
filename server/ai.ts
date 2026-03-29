@@ -1,24 +1,26 @@
 import type { Request, Response } from "express";
 import { storage } from "./storage";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+// Configuración del motor de IA
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-async function callGemini(prompt: string): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY no configurada");
+// 1. DEFINICIÓN DE HERRAMIENTAS (Aquí le damos las "manos" al agente)
+const tools = [
+  {
+    functionDeclarations: [
+      {
+        name: "consultar_mesas",
+        description: "Obtiene el estado actual de todas las mesas del restaurante (libres, ocupadas, etc).",
+      }
+    ],
+  },
+];
 
-  const res = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-    }),
-  });
-
-  const data = await res.json() as any;
-  if (data?.error) throw new Error(data.error.message);
-  return data?.candidates?.[0]?.content?.parts?.[0]?.text || "No pude generar una respuesta.";
-}
+const model = genAI.getGenerativeModel({ 
+  model: "gemini-1.5-flash",
+  tools: tools, // Le pasamos las herramientas al modelo
+});
 
 export async function handleAIChat(req: Request, res: Response) {
   try {
@@ -30,66 +32,59 @@ export async function handleAIChat(req: Request, res: Response) {
     if (!restaurantId) return res.status(400).json({ error: "Sin restaurante" });
 
     const restaurant = await storage.getRestaurant(restaurantId);
-    const products = await storage.getProductsByRestaurant(restaurantId);
-    const orders = await storage.getOrdersByRestaurant(restaurantId);
-    const tables = await storage.getTablesByRestaurant(restaurantId);
+    
+    // Contexto según el rol
+    let systemPrompt = `Eres el asistente inteligente de "${restaurant?.name}". `;
+    if (user.role === "owner") systemPrompt += "Eres el asistente del Dueño.";
+    else if (user.role === "waiter") systemPrompt += "Eres el asistente de los Meseros.";
+    else if (user.role === "cook") systemPrompt += "Eres el asistente de Cocina.";
 
-    const pendingOrders = orders.filter(o => o.status !== "delivered");
-    const productList = products.map(p => `- ${p.name} ($${p.price})`).join("\n");
+    // 2. INICIO DEL CHAT
+    const chat = model.startChat({
+      history: [
+        { role: "user", parts: [{ text: systemPrompt }] },
+        { role: "model", parts: [{ text: "Hola, soy el asistente de Pidely. ¿En qué te ayudo hoy?" }] },
+      ],
+    });
 
-    let systemPrompt = "";
+    // 3. ENVIAR MENSAJE Y MANEJAR HERRAMIENTAS
+    let result = await chat.sendMessage(message);
+    let response = result.response;
 
-    if (user.role === "owner") {
-      const totalVentas = orders.reduce((acc, o) => acc + Number(o.total), 0).toFixed(2);
-      systemPrompt = `Eres un asistente inteligente para el restaurante "${restaurant?.name}". 
-Tienes acceso completo a la información del negocio.
+    // REVISAR SI LA IA QUIERE EJECUTAR UNA FUNCIÓN (TOOL CALL)
+    const call = response.candidates?.[0]?.content?.parts?.find(p => p.functionCall);
 
-MENÚ (${products.length} productos):
-${productList}
+    if (call && call.functionCall?.name === "consultar_mesas") {
+      // EJECUTAMOS LA ACCIÓN REAL EN TU BASE DE DATOS
+      const tables = await storage.getTablesByRestaurant(restaurantId);
+      const orders = await storage.getOrdersByRestaurant(restaurantId);
+      
+      // Formateamos la respuesta para la IA
+      const infoMesas = tables.map(t => {
+        const ocupada = orders.some(o => o.tableId === String(t.number) && o.status !== "delivered");
+        return `Mesa ${t.number}: ${ocupada ? 'Ocupada' : 'Libre'}`;
+      }).join(", ");
 
-ESTADÍSTICAS:
-- Total de órdenes: ${orders.length}
-- Ventas totales: $${totalVentas}
-- Mesas: ${tables.length}
-- Órdenes pendientes: ${pendingOrders.length}
-
-Puedes ayudar con análisis de ventas, ideas para el menú, estrategias de negocio, marketing y cualquier consulta del dueño.
-Responde siempre en español, de forma clara y profesional.`;
-
-    } else if (user.role === "waiter") {
-      const waiterCalls = await storage.getWaiterCallsByRestaurant(restaurantId);
-      systemPrompt = `Eres un asistente para meseros del restaurante "${restaurant?.name}".
-
-MENÚ:
-${productList}
-
-ÓRDENES ACTIVAS (${pendingOrders.length}):
-${pendingOrders.map(o => `- Mesa ${o.tableId}: ${o.status}`).join("\n") || "Sin órdenes pendientes"}
-
-LLAMADAS DE MESERO ACTIVAS: ${waiterCalls.length}
-
-Ayuda al mesero con información del menú, estado de órdenes y mesas.
-Responde siempre en español, de forma breve y práctica.`;
-
-    } else if (user.role === "cook") {
-      systemPrompt = `Eres un asistente para la cocina del restaurante "${restaurant?.name}".
-
-ÓRDENES PENDIENTES (${pendingOrders.length}):
-${pendingOrders.map(o => {
-  const items = o.itemsJson as Array<{ name: string; quantity: number }>;
-  return `- Mesa ${o.tableId}: ${Array.isArray(items) ? items.map(i => `${i.quantity}x ${i.name}`).join(", ") : ""}`;
-}).join("\n") || "Sin órdenes pendientes"}
-
-Ayuda al equipo de cocina con prioridades, tiempos y organización de pedidos.
-Responde siempre en español, de forma breve y directa.`;
+      // Le devolvemos el resultado a la IA para que te responda a ti
+      result = await chat.sendMessage([
+        {
+          functionResponse: {
+            name: "consultar_mesas",
+            response: { content: infoMesas },
+          },
+        },
+      ]);
+      response = result.response;
     }
 
-    const fullPrompt = `${systemPrompt}\n\nUsuario: ${message}\n\nAsistente:`;
-    const reply = await callGemini(fullPrompt);
+    const reply = response.text();
     res.json({ reply });
 
   } catch (err: any) {
     console.error("AI error:", err);
-    res.status(500).json({ error: err.message || "Error del asistente" });
+    if (err.message?.includes("429") || err.message?.includes("quota")) {
+      return res.status(429).json({ error: "IA ocupada, intenta en 1 minuto." });
+    }
+    res.status(500).json({ error: "Error del asistente" });
   }
 }
