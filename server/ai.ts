@@ -2,24 +2,22 @@ import type { Request, Response } from "express";
 import { storage } from "./storage";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Configuración del motor de IA
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-// 1. DEFINICIÓN DE HERRAMIENTAS
 const tools: any = [
   {
     functionDeclarations: [
       {
         name: "consultar_mesas",
-        description: "Obtiene el estado actual de todas las mesas del restaurante (libres, ocupadas, etc).",
+        description: "Obtiene el estado actual de todas las mesas del restaurante.",
       }
     ],
   },
 ];
 
-// USAMOS EL NOMBRE ABSOLUTO DEL MODELO PARA EVITAR EL 404
+// MODELO DE MAXIMA COMPATIBILIDAD
 const model = genAI.getGenerativeModel({ 
-  model: "models/gemini-pro", 
+  model: "gemini-1.0-pro", 
   tools: tools,
 });
 
@@ -34,64 +32,41 @@ export async function handleAIChat(req: Request, res: Response) {
     const restaurantId = user.restaurantId;
     const restaurant = await storage.getRestaurant(restaurantId);
     
-    let systemPrompt = `Eres el asistente inteligente de "${restaurant?.name}". `;
-    if (user.role === "owner") systemPrompt += "Tu función es ayudar al Dueño con la gestión.";
-    else if (user.role === "waiter") systemPrompt += "Ayudas a los Meseros a saber qué mesas atender.";
-    else if (user.role === "cook") systemPrompt += "Eres el asistente de Cocina.";
+    let systemPrompt = `Eres el asistente de "${restaurant?.name}". Ayuda al usuario con su negocio.`;
 
-    // 2. INICIO DEL CHAT
     const chat = model.startChat({
       history: [
         { role: "user", parts: [{ text: systemPrompt }] },
-        { role: "model", parts: [{ text: "Entendido. Soy el asistente de Pidely para " + restaurant?.name + ". ¿En qué puedo apoyarte?" }] },
+        { role: "model", parts: [{ text: "Hola, soy tu asistente de Pidely. ¿En qué te ayudo?" }] },
       ],
     });
 
-    // 3. ENVIAR MENSAJE
     let result = await chat.sendMessage(message);
     let response = result.response;
 
     const call = response.candidates?.[0]?.content?.parts?.find(p => p.functionCall);
 
     if (call && call.functionCall) {
-      const functionName = call.functionCall.name;
-
-      if (functionName === "consultar_mesas") {
+      if (call.functionCall.name === "consultar_mesas") {
         const tables = await storage.getTablesByRestaurant(restaurantId);
         const orders = await storage.getOrdersByRestaurant(restaurantId);
         
         const infoMesas = tables.map(t => {
-          const tieneOrdenActiva = orders.some(o => 
-            Number(o.tableId) === t.number && 
-            o.status !== "delivered" && 
-            o.status !== "cancelled"
-          );
-          return `Mesa ${t.number}: ${tieneOrdenActiva ? 'Ocupada' : 'Libre'}`;
+          const ocupada = orders.some(o => Number(o.tableId) === t.number && o.status !== "delivered");
+          return `Mesa ${t.number}: ${ocupada ? 'Ocupada' : 'Libre'}`;
         }).join(", ");
 
         result = await chat.sendMessage([{
-          functionResponse: {
-            name: "consultar_mesas",
-            response: { content: infoMesas },
-          },
+          functionResponse: { name: "consultar_mesas", response: { content: infoMesas } },
         }]);
         response = result.response;
       }
     }
 
-    const reply = response.text();
-    res.json({ reply });
+    res.json({ reply: response.text() });
 
   } catch (err: any) {
     console.error("AI error detalle:", err);
-    
-    if (err.status === 404 || err.message?.includes("not found")) {
-       return res.status(500).json({ error: "Error de conexión: El modelo no responde. Intenta de nuevo en un momento." });
-    }
-    
-    if (err.message?.includes("429") || err.message?.includes("quota")) {
-      return res.status(429).json({ error: "IA saturada, espera un momento." });
-    }
-    res.status(500).json({ error: "Error del asistente" });
+    res.status(500).json({ error: "Error de conexión: El modelo no responde. Intenta de nuevo." });
   }
 }
