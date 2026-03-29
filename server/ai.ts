@@ -5,8 +5,8 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 // Configuración del motor de IA
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-// 1. DEFINICIÓN DE HERRAMIENTAS (Corregido para la versión actual del SDK)
-const tools = [
+// 1. DEFINICIÓN DE HERRAMIENTAS
+const tools: any = [
   {
     functionDeclarations: [
       {
@@ -17,15 +17,15 @@ const tools = [
   },
 ];
 
-// Usamos el nombre de modelo más estable para evitar el 404
+// USAMOS EL PREFIJO 'models/' QUE ES EL ESTÁNDAR DE GOOGLE CLOUD
 const model = genAI.getGenerativeModel({ 
-  model: "gemini-1.5-flash", 
+  model: "models/gemini-1.5-flash", 
   tools: tools,
 });
 
 export async function handleAIChat(req: Request, res: Response) {
   try {
-    const user = (req as any).user; // Ajuste para evitar errores de tipo
+    const user = (req as any).user;
     const { message } = req.body;
     
     if (!message) return res.status(400).json({ error: "Mensaje requerido" });
@@ -34,13 +34,12 @@ export async function handleAIChat(req: Request, res: Response) {
     const restaurantId = user.restaurantId;
     const restaurant = await storage.getRestaurant(restaurantId);
     
-    // Contexto dinámico según el rol
     let systemPrompt = `Eres el asistente inteligente de "${restaurant?.name}". `;
     if (user.role === "owner") systemPrompt += "Tu función es ayudar al Dueño con la gestión.";
     else if (user.role === "waiter") systemPrompt += "Ayudas a los Meseros a saber qué mesas atender.";
     else if (user.role === "cook") systemPrompt += "Eres el asistente de Cocina.";
 
-    // 2. INICIO DEL CHAT CON HISTORIAL LIMPIO
+    // 2. INICIO DEL CHAT
     const chat = model.startChat({
       history: [
         { role: "user", parts: [{ text: systemPrompt }] },
@@ -52,18 +51,16 @@ export async function handleAIChat(req: Request, res: Response) {
     let result = await chat.sendMessage(message);
     let response = result.response;
 
-    // REVISAR SI LA IA QUIERE USAR LA FUNCIÓN (MANEJO DE TOOL CALLS)
+    // REVISAR SI LA IA QUIERE USAR LA FUNCIÓN
     const call = response.candidates?.[0]?.content?.parts?.find(p => p.functionCall);
 
     if (call && call.functionCall) {
       const functionName = call.functionCall.name;
 
       if (functionName === "consultar_mesas") {
-        // Consultamos la base de datos real
         const tables = await storage.getTablesByRestaurant(restaurantId);
         const orders = await storage.getOrdersByRestaurant(restaurantId);
         
-        // Formateamos la info para que la IA la entienda
         const infoMesas = tables.map(t => {
           const tieneOrdenActiva = orders.some(o => 
             Number(o.tableId) === t.number && 
@@ -73,15 +70,13 @@ export async function handleAIChat(req: Request, res: Response) {
           return `Mesa ${t.number}: ${tieneOrdenActiva ? 'Ocupada' : 'Libre'}`;
         }).join(", ");
 
-        // Enviamos la respuesta de la función de vuelta a la IA
-        result = await chat.sendMessage([
-          {
-            functionResponse: {
-              name: "consultar_mesas",
-              response: { content: infoMesas },
-            },
+        // RESPUESTA DE LA FUNCIÓN (Formato corregido)
+        result = await chat.sendMessage([{
+          functionResponse: {
+            name: "consultar_mesas",
+            response: { content: infoMesas },
           },
-        ]);
+        }]);
         response = result.response;
       }
     }
@@ -91,10 +86,12 @@ export async function handleAIChat(req: Request, res: Response) {
 
   } catch (err: any) {
     console.error("AI error detalle:", err);
-    // Manejo de errores específicos
-    if (err.status === 404) {
-       return res.status(500).json({ error: "Modelo no encontrado. Revisa la región de tu API Key." });
+    
+    // Si sale 404 con la llave nueva, es un tema de nombre de modelo
+    if (err.status === 404 || err.message?.includes("not found")) {
+       return res.status(500).json({ error: "Modelo no encontrado. Asegúrate de que el nombre sea 'models/gemini-1.5-flash'." });
     }
+    
     if (err.message?.includes("429") || err.message?.includes("quota")) {
       return res.status(429).json({ error: "IA saturada, espera un momento." });
     }
