@@ -19,7 +19,7 @@ const tools: any = [
 
 // USAMOS EL PREFIJO 'models/' QUE ES EL ESTÁNDAR DE GOOGLE CLOUD
 const model = genAI.getGenerativeModel({ 
-  model: "models/gemini-1.5-flash", 
+  model: "gemini-pro", 
   tools: tools,
 });
 
