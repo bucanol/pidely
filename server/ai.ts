@@ -2,8 +2,10 @@ import type { Request, Response } from "express";
 import { storage } from "./storage";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+// Configuración del motor de IA
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
+// 1. DEFINICIÓN DE HERRAMIENTAS
 const tools: any = [
   {
     functionDeclarations: [
@@ -15,9 +17,9 @@ const tools: any = [
   },
 ];
 
-// MODELO DE MAXIMA COMPATIBILIDAD
+// USAMOS EL MODELO QUE TIENES DISPONIBLE SEGÚN TU LISTA
 const model = genAI.getGenerativeModel({ 
-  model: "gemini-1.0-pro", 
+  model: "gemini-2.0-flash", 
   tools: tools,
 });
 
@@ -32,12 +34,13 @@ export async function handleAIChat(req: Request, res: Response) {
     const restaurantId = user.restaurantId;
     const restaurant = await storage.getRestaurant(restaurantId);
     
-    let systemPrompt = `Eres el asistente de "${restaurant?.name}". Ayuda al usuario con su negocio.`;
+    let systemPrompt = `Eres el asistente inteligente de "${restaurant?.name}". `;
+    if (user.role === "owner") systemPrompt += "Tu función es ayudar al Dueño con la gestión.";
 
     const chat = model.startChat({
       history: [
         { role: "user", parts: [{ text: systemPrompt }] },
-        { role: "model", parts: [{ text: "Hola, soy tu asistente de Pidely. ¿En qué te ayudo?" }] },
+        { role: "model", parts: [{ text: "¡Hola! Soy el asistente de " + restaurant?.name + ". ¿En qué te ayudo?" }] },
       ],
     });
 
@@ -57,7 +60,10 @@ export async function handleAIChat(req: Request, res: Response) {
         }).join(", ");
 
         result = await chat.sendMessage([{
-          functionResponse: { name: "consultar_mesas", response: { content: infoMesas } },
+          functionResponse: {
+            name: "consultar_mesas",
+            response: { content: infoMesas },
+          },
         }]);
         response = result.response;
       }
@@ -67,6 +73,6 @@ export async function handleAIChat(req: Request, res: Response) {
 
   } catch (err: any) {
     console.error("AI error detalle:", err);
-    res.status(500).json({ error: "Error de conexión: El modelo no responde. Intenta de nuevo." });
+    res.status(500).json({ error: "Error de comunicación con Gemini 2.0. Revisa la consola." });
   }
 }
