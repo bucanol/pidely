@@ -72,14 +72,14 @@ export async function handleAIChat(req: Request, res: Response) {
         response = result.response;
       } 
       
-      // LÓGICA: CREAR
+      // LÓGICA: CREAR (Corregido para evitar error de qrCode)
       else if (name === "crear_mesa") {
         const numeroMesa = (args as any).numero;
-        // Aquí llamamos al storage para insertar la mesa
+        
         await storage.createTable({
           restaurantId,
           number: numeroMesa,
-          qrCode: `table-${numeroMesa}`, // Generamos un QR básico
+          label: `Mesa ${numeroMesa}`, // Cambiado de qrCode a label para que VS Code no chille
         });
 
         result = await chat.sendMessage([{ 
