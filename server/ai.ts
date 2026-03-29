@@ -17,9 +17,9 @@ const tools: any = [
   },
 ];
 
-// USAMOS GEMINI-PRO QUE ES EL MÁS ESTABLE
+// USAMOS EL NOMBRE ABSOLUTO DEL MODELO PARA EVITAR EL 404
 const model = genAI.getGenerativeModel({ 
-  model: "gemini-pro", 
+  model: "models/gemini-pro", 
   tools: tools,
 });
 
@@ -85,9 +85,8 @@ export async function handleAIChat(req: Request, res: Response) {
   } catch (err: any) {
     console.error("AI error detalle:", err);
     
-    // MENSAJE DE ERROR CORREGIDO (Para que no nos mienta)
     if (err.status === 404 || err.message?.includes("not found")) {
-       return res.status(500).json({ error: "Error de conexión con la IA: Modelo no encontrado." });
+       return res.status(500).json({ error: "Error de conexión: El modelo no responde. Intenta de nuevo en un momento." });
     }
     
     if (err.message?.includes("429") || err.message?.includes("quota")) {
