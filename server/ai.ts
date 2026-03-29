@@ -83,14 +83,17 @@ export async function handleAIChat(req: Request, res: Response) {
     // 5. RESPUESTA FINAL AL CLIENTE
     res.json({ reply: response.text() });
 
-  } catch (err: any) {
+} catch (err: any) {
     console.error("AI error detalle:", err);
     
-    // Manejo de errores más descriptivo
     const status = err.status || 500;
-    const errorMsg = err.status === 503 
-      ? "Google está saturado, intenta de nuevo en 5 segundos." 
-      : "Error del asistente. Por favor, intenta de nuevo.";
+    let errorMsg = "Error del asistente. Por favor, intenta de nuevo.";
+
+    if (status === 429) {
+      errorMsg = "¡Vas muy rápido! Google me pide que esperemos unos 15 segundos antes de seguir hablando.";
+    } else if (status === 503) {
+      errorMsg = "El servidor de Google está saturado, intenta en un momento.";
+    }
       
     res.status(status).json({ error: errorMsg });
   }
