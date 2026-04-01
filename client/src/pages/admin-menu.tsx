@@ -26,6 +26,7 @@ import type { Category, Product, Restaurant } from "@shared/schema";
 import { Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import AdminNav from "@/components/admin-nav";
+import AIChat from "@/components/ai-chat";
 
 const productSchema = z.object({
   name: z.string().min(1, "Nombre requerido"),
@@ -543,6 +544,7 @@ export default function AdminMenuPage() {
         </DialogContent>
       </Dialog>
 
+<AIChat mode="admin" />
       <AdminNav />
     </div>
   );

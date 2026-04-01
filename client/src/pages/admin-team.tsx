@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Plus, Trash2, Loader2, Users, ChefHat, UtensilsCrossed, Crown } from "lucide-react";
 import { useState } from "react";
+import AIChat from "@/components/ai-chat";
 
 type TeamMember = {
   id: string;
@@ -222,6 +223,7 @@ export default function AdminTeamPage() {
           )}
         </div>
       </div>
+      <AIChat mode="admin" />
       <AdminNav />
     </div>
   );

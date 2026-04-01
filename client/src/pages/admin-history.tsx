@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import type { Restaurant, Ticket, Order, OrderItem } from "@shared/schema";
 import AdminNav from "@/components/admin-nav";
+import AIChat from "@/components/ai-chat";
 
 type TicketWithOrders = Ticket & { orders: Order[] };
 
@@ -218,6 +219,7 @@ export default function AdminHistoryPage() {
         </main>
       )}
 
+<AIChat mode="admin" />
       <AdminNav />
     </div>
   );

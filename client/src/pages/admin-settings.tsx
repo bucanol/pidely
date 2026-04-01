@@ -15,6 +15,7 @@ import {
 import type { Restaurant } from "@shared/schema";
 import { Link } from "wouter";
 import AdminNav from "@/components/admin-nav";
+import AIChat from "@/components/ai-chat";
 
 const settingsSchema = z.object({
   name: z.string().min(1, "El nombre es requerido"),
@@ -225,6 +226,7 @@ export default function AdminSettingsPage() {
         </Form>
       </main>
 
+<AIChat mode="admin" />
       <AdminNav />
     </div>
   );
