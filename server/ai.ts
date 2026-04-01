@@ -1,16 +1,16 @@
-import { Request, Response } from "express";
+import type { Request, Response } from "express";
 import { storage } from "./storage";
 import Groq from "groq-sdk";
 
 let groq: Groq;
-const MODEL = "llama-3.3-70b-versatile";
+// Modelos para escalabilidad: 8b para velocidad/bajo costo, 70b para análisis profundo
+const POWER_MODEL = "llama-3.3-70b-versatile";
+const LIGHT_MODEL = "llama-3.1-8b-instant";
 
 function getGroq() {
   if (!groq) groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
   return groq;
 }
-
-// --- TUS HERRAMIENTAS ORIGINALES (SIN MODIFICAR) ---
 
 const clientTools = [
   {
@@ -170,8 +170,6 @@ const ownerTools = [
     },
   },
 ];
-
-// --- TU LÓGICA DE EJECUCIÓN (SIN MODIFICAR CASOS) ---
 
 async function executeTool(
   name: string,
@@ -401,8 +399,6 @@ async function executeTool(
   }
 }
 
-// --- FUNCIONES MEJORADAS (CORRIGIENDO ERRORES DE CLAUDE) ---
-
 function buildSystemPrompt(role: string, restaurantName: string, tableId?: string): string {
   const roleNames: Record<string, string> = {
     client: "Cliente en mesa",
@@ -411,51 +407,70 @@ function buildSystemPrompt(role: string, restaurantName: string, tableId?: strin
     owner: "Dueño del restaurante"
   };
 
-  const base = `Eres el asistente inteligente de "${restaurantName}", una plataforma llamada Pidely. 
-RESPONDE SIEMPRE EN EL IDIOMA DEL USUARIO.
+  const base = `Eres el asistente inteligente de "${restaurantName}", una plataforma llamada Pidely. Responde siempre en el mismo idioma que el usuario. Cuando envíes información a cocina o al sistema, hazlo siempre en español. Sé conciso, amable y útil.
 TU ROL ACTUAL ES: ${roleNames[role] || role}.
 
 REGLAS DE FORMATO:
-- Usa Markdown para estructurar la respuesta.
-- Usa SIEMPRE saltos de línea (\n) entre párrafos.
-- Sé conciso, amable y directo.
+- Usa Markdown para dar estructura a tus respuestas.
+- Usa SIEMPRE saltos de línea (\n) entre párrafos para que el texto sea legible.
 
 REGLAS DE SEGURIDAD Y DATOS:
-- NO INVENTES PLATILLOS NI PRECIOS. Si necesitas conocer el menú, usa 'get_menu'.
-- Si un platillo no aparece en el menú real, informa amablemente que no está disponible.
-- No alucines historial de pedidos; consúltalo con las herramientas si es necesario.`;
+- NO INVENTES PLATILLOS. Si necesitas conocer el menú, usa obligatoriamente la herramienta 'get_menu'.
+- Si un platillo no está en el resultado de la herramienta, informa que no está disponible actualmente.`;
 
   switch (role) {
     case "client":
       return `${base}
+
 Eres el asistente de mesa para la Mesa ${tableId}. Tu rol es:
-- Ayudar al cliente a explorar el menú y sugerir platillos.
-- Detectar alergias y restricciones dietéticas (recuérdalas durante la charla).
-- Permitir pedidos directos mediante 'place_order'.
-- Mostrar totales, llamar al mesero o pedir la cuenta.
-Cuando sugieras platillos, menciona siempre el precio real del menú.`;
+- Ayudar al cliente a explorar el menú, sugerir platillos y combos
+- Detectar alergias o restricciones dietéticas y filtrar el menú automáticamente
+- Hacer upselling inteligente (sugerir complementos cuando el cliente pide algo)
+- Permitir que el cliente haga pedidos directamente por chat
+- Mostrar el total acumulado de su cuenta cuando lo pidan
+- Llamar al mesero o solicitar la cuenta cuando el cliente lo pida
+- Si el cliente dice que tiene alguna alergia, recuérdala durante toda la conversación y úsala para filtrar sugerencias
+
+Cuando el cliente quiera ordenar, usa la herramienta place_order con los productos exactos del menú.
+Cuando sugieras platillos, menciona siempre el precio.
+Sé cálido, eficiente y proactivo.`;
 
     case "cook":
       return `${base}
+
 Eres el asistente de cocina. Tu rol es:
-- Gestionar órdenes activas.
-- Consultar recetas e ingredientes detallados.
-- Alertar sobre demanda de ingredientes.
-La cocina necesita respuestas rápidas y claras.`;
+- Mostrar las órdenes activas (pendientes y en preparación)
+- Consultar ingredientes y descripciones de platillos del menú
+- Alertar sobre ingredientes con alta demanda en órdenes activas
+- Responder preguntas sobre recetas o preparación de platillos basándote en sus descripciones
+
+Sé directo y eficiente. La cocina necesita información rápida y clara.`;
 
     case "waiter":
       return `${base}
+
 Eres el asistente para meseros. Tu rol es:
-- Mostrar el estado de mesas.
-- Consultar cuentas de mesas específicas.
-- Listar llamadas pendientes.`;
+- Mostrar el estado de todas las mesas de un vistazo
+- Consultar la cuenta detallada de cualquier mesa
+- Mostrar llamadas de mesero pendientes
+- Sugerir cuándo una mesa podría necesitar atención
+
+Sé directo y eficiente.`;
 
     case "owner":
       return `${base}
-Eres el asistente ejecutivo del dueño. Tu rol es:
-- Dar reportes de ventas y analytics.
-- Detectar patrones y sugerir promociones basadas en datos reales.
-- Dar reportes ejecutivos accionables.`;
+
+Eres el asistente ejecutivo del dueño de "${restaurantName}". Tienes acceso completo al negocio. Tu rol es:
+- Proporcionar analytics y estadísticas de ventas detalladas
+- Detectar patrones: horas pico, platillos más/menos vendidos, tendencias
+- Sugerir promociones basadas en datos reales del negocio
+- Sugerir ajustes de precios basados en demanda
+- Generar ideas de marketing y promociones para redes sociales
+- Mostrar estado actual del restaurante: mesas, órdenes, llamadas
+- Consultar historial de tickets y pagos
+- Dar reportes ejecutivos claros y accionables
+
+Cuando el dueño pida sugerencias de promociones o marketing, sé creativo y usa datos reales del menú y ventas.`;
 
     default:
       return base;
@@ -474,6 +489,9 @@ export async function handleAIChat(req: Request, res: Response) {
     const role = user.role;
     const restaurant = await storage.getRestaurant(restaurantId);
 
+    // Selección de modelo: 70b para dueño, 8b para los demás (ahorro de tokens y velocidad)
+    const selectedModel = role === "owner" ? POWER_MODEL : LIGHT_MODEL;
+
     const tools =
       role === "owner" ? ownerTools :
       role === "cook" ? kitchenTools :
@@ -482,7 +500,7 @@ export async function handleAIChat(req: Request, res: Response) {
 
     const systemPrompt = buildSystemPrompt(role, restaurant?.name || "el restaurante", tableId);
 
-    // Limpieza de historial para evitar corrupción
+    // Limpieza de historial para evitar corrupción técnica
     const cleanHistory = Array.isArray(history) 
       ? history.filter((m: any) => m.role && (m.content !== undefined || m.tool_calls)) 
       : [];
@@ -494,12 +512,12 @@ export async function handleAIChat(req: Request, res: Response) {
     ];
 
     let response = await getGroq().chat.completions.create({
-      model: MODEL,
+      model: selectedModel,
       messages,
       tools,
       tool_choice: "auto",
       max_tokens: 1024,
-      temperature: 0.1, // Menos creatividad = menos alucinaciones
+      temperature: 0.1,
     });
 
     let assistantMessage = response.choices[0].message;
@@ -530,7 +548,7 @@ export async function handleAIChat(req: Request, res: Response) {
       messages.push(...toolResults);
 
       response = await getGroq().chat.completions.create({
-        model: MODEL,
+        model: selectedModel,
         messages,
         tools,
         tool_choice: "auto",
@@ -572,7 +590,7 @@ export async function handlePublicAIChat(req: Request, res: Response) {
     ];
 
     let response = await getGroq().chat.completions.create({
-      model: MODEL,
+      model: LIGHT_MODEL, // Siempre ligero para clientes públicos (más rápido)
       messages,
       tools: clientTools,
       tool_choice: "auto",
@@ -608,7 +626,7 @@ export async function handlePublicAIChat(req: Request, res: Response) {
       messages.push(...toolResults);
 
       response = await getGroq().chat.completions.create({
-        model: MODEL,
+        model: LIGHT_MODEL,
         messages,
         tools: clientTools,
         tool_choice: "auto",
