@@ -16,6 +16,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { useAuth } from "@/hooks/use-auth";
 import { useWebSocket } from "@/hooks/use-websocket";
 import AdminNav from "@/components/admin-nav";
+import AIChat from "@/components/ai-chat";
 
 const STATUS_STYLES = {
   free: { bg: "bg-gray-50", border: "border-gray-200/50", dot: "bg-gray-300", label: "Libre", text: "text-gray-500" },
@@ -453,6 +454,7 @@ export default function AdminTablesPage() {
         </DialogContent>
       </Dialog>
 
+<AIChat mode="admin" />
       <AdminNav />
     </div>
   );

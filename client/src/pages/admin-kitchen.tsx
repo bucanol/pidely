@@ -13,6 +13,7 @@ import { Link, useLocation } from "wouter";
 import { useState, useEffect } from "react";
 import AdminNav from "@/components/admin-nav";
 import NotificationBanner from "@/components/notification-banner";
+import AIChat from "@/components/ai-chat";
 
 const STATUS_CONFIG = {
   pending: { label: "Nuevo", bg: "bg-amber-50", border: "border-amber-200/60", dot: "bg-amber-400", text: "text-amber-700" },
@@ -285,6 +286,7 @@ export default function AdminKitchenPage() {
         )}
       </main>
 
+      <AIChat mode="admin" />
       <AdminNav />
     </div>
   );

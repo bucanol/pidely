@@ -8,6 +8,7 @@ import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import type { Restaurant } from "@shared/schema";
 import AdminNav from "@/components/admin-nav";
+import AIChat from "@/components/ai-chat";
 
 type AnalyticsData = {
   totals: {
@@ -232,6 +233,7 @@ export default function AdminAnalyticsPage() {
         </main>
       )}
 
+<AIChat mode="admin" />
       <AdminNav />
     </div>
   );
