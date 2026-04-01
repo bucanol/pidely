@@ -1,4 +1,4 @@
-import type { Request, Response } from "express";
+import { Request, Response } from "express";
 import { storage } from "./storage";
 import Groq from "groq-sdk";
 
@@ -9,6 +9,8 @@ function getGroq() {
   if (!groq) groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
   return groq;
 }
+
+// --- TUS HERRAMIENTAS ORIGINALES (SIN MODIFICAR) ---
 
 const clientTools = [
   {
@@ -168,6 +170,8 @@ const ownerTools = [
     },
   },
 ];
+
+// --- TU LÓGICA DE EJECUCIÓN (SIN MODIFICAR CASOS) ---
 
 async function executeTool(
   name: string,
@@ -397,62 +401,61 @@ async function executeTool(
   }
 }
 
+// --- FUNCIONES MEJORADAS (CORRIGIENDO ERRORES DE CLAUDE) ---
+
 function buildSystemPrompt(role: string, restaurantName: string, tableId?: string): string {
-  const base = `Eres el asistente inteligente de "${restaurantName}", una plataforma llamada Pidely. Responde siempre en el mismo idioma que el usuario. Cuando envíes información a cocina o al sistema, hazlo siempre en español. Sé conciso, amable y útil.`;
+  const roleNames: Record<string, string> = {
+    client: "Cliente en mesa",
+    cook: "Cocinero/Chef",
+    waiter: "Mesero",
+    owner: "Dueño del restaurante"
+  };
+
+  const base = `Eres el asistente inteligente de "${restaurantName}", una plataforma llamada Pidely. 
+RESPONDE SIEMPRE EN EL IDIOMA DEL USUARIO.
+TU ROL ACTUAL ES: ${roleNames[role] || role}.
+
+REGLAS DE FORMATO:
+- Usa Markdown para estructurar la respuesta.
+- Usa SIEMPRE saltos de línea (\n) entre párrafos.
+- Sé conciso, amable y directo.
+
+REGLAS DE SEGURIDAD Y DATOS:
+- NO INVENTES PLATILLOS NI PRECIOS. Si necesitas conocer el menú, usa 'get_menu'.
+- Si un platillo no aparece en el menú real, informa amablemente que no está disponible.
+- No alucines historial de pedidos; consúltalo con las herramientas si es necesario.`;
 
   switch (role) {
     case "client":
       return `${base}
-
 Eres el asistente de mesa para la Mesa ${tableId}. Tu rol es:
-- Ayudar al cliente a explorar el menú, sugerir platillos y combos
-- Detectar alergias o restricciones dietéticas y filtrar el menú automáticamente
-- Hacer upselling inteligente (sugerir complementos cuando el cliente pide algo)
-- Permitir que el cliente haga pedidos directamente por chat
-- Mostrar el total acumulado de su cuenta cuando lo pidan
-- Llamar al mesero o solicitar la cuenta cuando el cliente lo pida
-- Si el cliente dice que tiene alguna alergia, recuérdala durante toda la conversación y úsala para filtrar sugerencias
-
-Cuando el cliente quiera ordenar, usa la herramienta place_order con los productos exactos del menú.
-Cuando sugieras platillos, menciona siempre el precio.
-Sé cálido, eficiente y proactivo.`;
+- Ayudar al cliente a explorar el menú y sugerir platillos.
+- Detectar alergias y restricciones dietéticas (recuérdalas durante la charla).
+- Permitir pedidos directos mediante 'place_order'.
+- Mostrar totales, llamar al mesero o pedir la cuenta.
+Cuando sugieras platillos, menciona siempre el precio real del menú.`;
 
     case "cook":
       return `${base}
-
 Eres el asistente de cocina. Tu rol es:
-- Mostrar las órdenes activas (pendientes y en preparación)
-- Consultar ingredientes y descripciones de platillos del menú
-- Alertar sobre ingredientes con alta demanda en órdenes activas
-- Responder preguntas sobre recetas o preparación de platillos basándote en sus descripciones
-
-Sé directo y eficiente. La cocina necesita información rápida y clara.`;
+- Gestionar órdenes activas.
+- Consultar recetas e ingredientes detallados.
+- Alertar sobre demanda de ingredientes.
+La cocina necesita respuestas rápidas y claras.`;
 
     case "waiter":
       return `${base}
-
 Eres el asistente para meseros. Tu rol es:
-- Mostrar el estado de todas las mesas de un vistazo
-- Consultar la cuenta detallada de cualquier mesa
-- Mostrar llamadas de mesero pendientes
-- Sugerir cuándo una mesa podría necesitar atención
-
-Sé directo y eficiente.`;
+- Mostrar el estado de mesas.
+- Consultar cuentas de mesas específicas.
+- Listar llamadas pendientes.`;
 
     case "owner":
       return `${base}
-
-Eres el asistente ejecutivo del dueño de "${restaurantName}". Tienes acceso completo al negocio. Tu rol es:
-- Proporcionar analytics y estadísticas de ventas detalladas
-- Detectar patrones: horas pico, platillos más/menos vendidos, tendencias
-- Sugerir promociones basadas en datos reales del negocio
-- Sugerir ajustes de precios basados en demanda
-- Generar ideas de marketing y promociones para redes sociales
-- Mostrar estado actual del restaurante: mesas, órdenes, llamadas
-- Consultar historial de tickets y pagos
-- Dar reportes ejecutivos claros y accionables
-
-Cuando el dueño pida sugerencias de promociones o marketing, sé creativo y usa datos reales del menú y ventas.`;
+Eres el asistente ejecutivo del dueño. Tu rol es:
+- Dar reportes de ventas y analytics.
+- Detectar patrones y sugerir promociones basadas en datos reales.
+- Dar reportes ejecutivos accionables.`;
 
     default:
       return base;
@@ -479,9 +482,14 @@ export async function handleAIChat(req: Request, res: Response) {
 
     const systemPrompt = buildSystemPrompt(role, restaurant?.name || "el restaurante", tableId);
 
+    // Limpieza de historial para evitar corrupción
+    const cleanHistory = Array.isArray(history) 
+      ? history.filter((m: any) => m.role && (m.content !== undefined || m.tool_calls)) 
+      : [];
+
     const messages: any[] = [
       { role: "system", content: systemPrompt },
-      ...history,
+      ...cleanHistory,
       { role: "user", content: message },
     ];
 
@@ -491,6 +499,7 @@ export async function handleAIChat(req: Request, res: Response) {
       tools,
       tool_choice: "auto",
       max_tokens: 1024,
+      temperature: 0.1, // Menos creatividad = menos alucinaciones
     });
 
     let assistantMessage = response.choices[0].message;
@@ -500,13 +509,21 @@ export async function handleAIChat(req: Request, res: Response) {
 
       const toolResults = await Promise.all(
         assistantMessage.tool_calls.map(async (tc) => {
-          const args = JSON.parse(tc.function.arguments || "{}");
-          const result = await executeTool(tc.function.name, args, restaurantId, role, tableId, slug);
-          return {
-            role: "tool" as const,
-            tool_call_id: tc.id,
-            content: result,
-          };
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const result = await executeTool(tc.function.name, args, restaurantId, role, tableId, slug);
+            return {
+              role: "tool" as const,
+              tool_call_id: tc.id,
+              content: result,
+            };
+          } catch (e) {
+            return {
+              role: "tool" as const,
+              tool_call_id: tc.id,
+              content: JSON.stringify({ error: "Error procesando herramienta" }),
+            };
+          }
         })
       );
 
@@ -544,9 +561,13 @@ export async function handlePublicAIChat(req: Request, res: Response) {
     const restaurantId = restaurant.id;
     const systemPrompt = buildSystemPrompt("client", restaurant.name, tableId);
 
+    const cleanHistory = Array.isArray(history) 
+      ? history.filter((m: any) => m.role && (m.content !== undefined || m.tool_calls)) 
+      : [];
+
     const messages: any[] = [
       { role: "system", content: systemPrompt },
-      ...history,
+      ...cleanHistory,
       { role: "user", content: message },
     ];
 
@@ -556,6 +577,7 @@ export async function handlePublicAIChat(req: Request, res: Response) {
       tools: clientTools,
       tool_choice: "auto",
       max_tokens: 1024,
+      temperature: 0.1,
     });
 
     let assistantMessage = response.choices[0].message;
@@ -565,13 +587,21 @@ export async function handlePublicAIChat(req: Request, res: Response) {
 
       const toolResults = await Promise.all(
         assistantMessage.tool_calls.map(async (tc) => {
-          const args = JSON.parse(tc.function.arguments || "{}");
-          const result = await executeTool(tc.function.name, args, restaurantId, "client", tableId, slug);
-          return {
-            role: "tool" as const,
-            tool_call_id: tc.id,
-            content: result,
-          };
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const result = await executeTool(tc.function.name, args, restaurantId, "client", tableId, slug);
+            return {
+              role: "tool" as const,
+              tool_call_id: tc.id,
+              content: result,
+            };
+          } catch (e) {
+            return {
+              role: "tool" as const,
+              tool_call_id: tc.id,
+              content: JSON.stringify({ error: "Error en herramienta" }),
+            };
+          }
         })
       );
 
