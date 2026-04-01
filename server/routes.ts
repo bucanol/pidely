@@ -9,6 +9,7 @@ import path from "path";
 import { randomUUID } from "crypto";
 import express from "express";
 import bcrypt from "bcryptjs";
+import { handleAIChat, handlePublicAIChat } from "./ai";
 
 const uploadStorage = multer.diskStorage({
   destination: "uploads/",
@@ -35,27 +36,31 @@ export async function registerRoutes(
   app.use("/uploads", express.static("uploads"));
 
   app.get("/api/restaurants/:slug", async (req, res) => {
-    const restaurant = await storage.getRestaurantBySlug(req.params.slug);
+    const slug = String(req.params.slug);
+    const restaurant = await storage.getRestaurantBySlug(slug);
     if (!restaurant) return res.status(404).json({ error: "Restaurant not found" });
     res.json(restaurant);
   });
 
   app.get("/api/restaurants/:slug/categories", async (req, res) => {
-    const restaurant = await storage.getRestaurantBySlug(req.params.slug);
+    const slug = String(req.params.slug);
+    const restaurant = await storage.getRestaurantBySlug(slug);
     if (!restaurant) return res.status(404).json({ error: "Restaurant not found" });
     const cats = await storage.getCategoriesByRestaurant(restaurant.id);
     res.json(cats);
   });
 
   app.get("/api/restaurants/:slug/products", async (req, res) => {
-    const restaurant = await storage.getRestaurantBySlug(req.params.slug);
+    const slug = String(req.params.slug);
+    const restaurant = await storage.getRestaurantBySlug(slug);
     if (!restaurant) return res.status(404).json({ error: "Restaurant not found" });
     const prods = await storage.getProductsByRestaurant(restaurant.id);
     res.json(prods);
   });
 
   app.post("/api/restaurants/:slug/orders", async (req, res) => {
-    const restaurant = await storage.getRestaurantBySlug(req.params.slug);
+    const slug = String(req.params.slug);
+    const restaurant = await storage.getRestaurantBySlug(slug);
     if (!restaurant) return res.status(404).json({ error: "Restaurant not found" });
     const parsed = insertOrderSchema.safeParse({ ...req.body, restaurantId: restaurant.id });
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -75,16 +80,19 @@ export async function registerRoutes(
   });
 
   app.get("/api/restaurants/:slug/ticket/:tableId", async (req, res) => {
-    const restaurant = await storage.getRestaurantBySlug(req.params.slug);
+    const slug = String(req.params.slug);
+    const tableId = String(req.params.tableId);
+    const restaurant = await storage.getRestaurantBySlug(slug);
     if (!restaurant) return res.status(404).json({ error: "Restaurant not found" });
-    const ticket = await storage.getOpenTicketByTable(restaurant.id, req.params.tableId);
+    const ticket = await storage.getOpenTicketByTable(restaurant.id, tableId);
     if (!ticket) return res.json(null);
     const ticketOrders = await storage.getOrdersByTicket(ticket.id);
     res.json({ ...ticket, orders: ticketOrders });
   });
 
   app.post("/api/restaurants/:slug/waiter-calls", async (req, res) => {
-    const restaurant = await storage.getRestaurantBySlug(req.params.slug);
+    const slug = String(req.params.slug);
+    const restaurant = await storage.getRestaurantBySlug(slug);
     if (!restaurant) return res.status(404).json({ error: "Restaurant not found" });
     const parsed = insertWaiterCallSchema.safeParse({ ...req.body, restaurantId: restaurant.id });
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -115,9 +123,10 @@ export async function registerRoutes(
   });
 
   app.patch("/api/admin/orders/:id/status", requireAuth, async (req, res) => {
+    const id = String(req.params.id);
     const { status } = req.body;
     if (!status) return res.status(400).json({ error: "status required" });
-    const order = await storage.updateOrderStatus(req.params.id, status);
+    const order = await storage.updateOrderStatus(id, status);
     broadcastToRestaurant(req.user!.restaurantId!, { type: "order_status_changed", data: { order } });
     res.json(order);
   });
@@ -130,7 +139,8 @@ export async function registerRoutes(
   });
 
   app.patch("/api/admin/waiter-calls/:id/resolve", requireAuth, async (req, res) => {
-    const call = await storage.resolveWaiterCall(req.params.id);
+    const id = String(req.params.id);
+    const call = await storage.resolveWaiterCall(id);
     res.json(call);
   });
 
@@ -151,12 +161,14 @@ export async function registerRoutes(
   });
 
   app.patch("/api/admin/categories/:id", requireAuth, async (req, res) => {
-    const cat = await storage.updateCategory(req.params.id, req.body);
+    const id = String(req.params.id);
+    const cat = await storage.updateCategory(id, req.body);
     res.json(cat);
   });
 
   app.delete("/api/admin/categories/:id", requireAuth, async (req, res) => {
-    await storage.deleteCategory(req.params.id);
+    const id = String(req.params.id);
+    await storage.deleteCategory(id);
     res.status(204).send();
   });
 
@@ -177,12 +189,14 @@ export async function registerRoutes(
   });
 
   app.patch("/api/admin/products/:id", requireAuth, async (req, res) => {
-    const product = await storage.updateProduct(req.params.id, req.body);
+    const id = String(req.params.id);
+    const product = await storage.updateProduct(id, req.body);
     res.json(product);
   });
 
   app.delete("/api/admin/products/:id", requireAuth, async (req, res) => {
-    await storage.deleteProduct(req.params.id);
+    const id = String(req.params.id);
+    await storage.deleteProduct(id);
     res.status(204).send();
   });
 
@@ -222,15 +236,17 @@ export async function registerRoutes(
   });
 
   app.get("/api/admin/tickets/:id", requireAuth, async (req, res) => {
-    const ticket = await storage.getTicket(req.params.id);
+    const id = String(req.params.id);
+    const ticket = await storage.getTicket(id);
     if (!ticket) return res.status(404).json({ error: "Ticket not found" });
     const ticketOrders = await storage.getOrdersByTicket(ticket.id);
     res.json({ ...ticket, orders: ticketOrders });
   });
 
   app.post("/api/admin/tickets/:id/close", requireAuth, async (req, res) => {
+    const id = String(req.params.id);
     const { paymentMethod } = req.body;
-    const ticket = await storage.closeTicket(req.params.id, paymentMethod || "cash");
+    const ticket = await storage.closeTicket(id, paymentMethod || "cash");
     res.json(ticket);
   });
 
@@ -244,7 +260,8 @@ export async function registerRoutes(
   });
 
   app.delete("/api/admin/tables/:id", requireAuth, async (req, res) => {
-    await storage.deleteTable(req.params.id);
+    const id = String(req.params.id);
+    await storage.deleteTable(id);
     res.status(204).send();
   });
 
@@ -334,7 +351,8 @@ export async function registerRoutes(
   });
 
   app.post("/api/restaurants/:slug/request-bill", async (req, res) => {
-    const restaurant = await storage.getRestaurantBySlug(req.params.slug);
+    const slug = String(req.params.slug);
+    const restaurant = await storage.getRestaurantBySlug(slug);
     if (!restaurant) return res.status(404).json({ error: "Restaurant not found" });
     const { tableId } = req.body;
     const ticket = await storage.getOpenTicketByTable(restaurant.id, tableId);
@@ -373,14 +391,18 @@ export async function registerRoutes(
   });
 
   app.delete("/api/admin/team/:id", requireOwner, async (req, res) => {
-    const member = await storage.getUser(req.params.id);
+    const id = String(req.params.id);
+    const member = await storage.getUser(id);
     if (!member || member.restaurantId !== req.user!.restaurantId) {
       return res.status(404).json({ error: "Miembro no encontrado" });
     }
     if (member.role === "owner") return res.status(400).json({ error: "No puedes eliminar al dueño" });
-    await storage.deleteUser(req.params.id);
+    await storage.deleteUser(id);
     res.status(204).send();
   });
+
+  app.post("/api/admin/ai/chat", requireAuth, handleAIChat);
+  app.post("/api/restaurants/:slug/ai/chat", handlePublicAIChat);
 
   return httpServer;
 }

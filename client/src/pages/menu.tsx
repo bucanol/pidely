@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import type { Restaurant, Category, Product, OrderItem, Ticket, Order } from "@shared/schema";
+import AIChat from "@/components/ai-chat";
 
 export default function MenuPage() {
   const { slug, tableId } = useParams<{ slug: string; tableId: string }>();
@@ -505,6 +506,13 @@ export default function MenuPage() {
           )}
         </SheetContent>
       </Sheet>
+
+      <AIChat
+        mode="client"
+        slug={slug}
+        tableId={tableId}
+        onOrderPlaced={() => refetchTicket()}
+      />
     </div>
   );
 }
