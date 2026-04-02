@@ -11,32 +11,32 @@ function getGroq() {
   return groq;
 }
 
-// --- TOOLS (SIN CAMBIOS PARA NO ROMPER NADA) ---
+// --- TUS TOOLS (MANTENEMOS TU LÓGICA ORIGINAL) ---
 const clientTools = [
-  { type: "function" as const, function: { name: "get_menu", description: "Obtiene el menú completo del restaurante con categorías, platillos, precios, descripciones y disponibilidad.", parameters: { type: "object", properties: {}, required: [] } } },
-  { type: "function" as const, function: { name: "get_my_bill", description: "Obtiene la cuenta actual de la mesa: pedidos realizados, productos y total acumulado.", parameters: { type: "object", properties: {}, required: [] } } },
-  { type: "function" as const, function: { name: "place_order", description: "Envía un pedido a cocina en nombre del cliente.", parameters: { type: "object", properties: { items: { type: "array", items: { type: "object", properties: { productId: { type: "string" }, name: { type: "string" }, price: { type: "number" }, quantity: { type: "number" }, notes: { type: "string" } }, required: ["productId", "name", "price", "quantity"] } } }, required: ["items"] } } },
-  { type: "function" as const, function: { name: "call_waiter", description: "Llama al mesero a la mesa del cliente.", parameters: { type: "object", properties: {}, required: [] } } },
-  { type: "function" as const, function: { name: "request_bill", description: "Solicita la cuenta para que el mesero la traiga.", parameters: { type: "object", properties: {}, required: [] } } },
+  { type: "function" as const, function: { name: "get_menu", description: "Obtiene el menú completo.", parameters: { type: "object", properties: {}, required: [] } } },
+  { type: "function" as const, function: { name: "get_my_bill", description: "Obtiene la cuenta actual.", parameters: { type: "object", properties: {}, required: [] } } },
+  { type: "function" as const, function: { name: "place_order", description: "Envía pedido a cocina.", parameters: { type: "object", properties: { items: { type: "array", items: { type: "object", properties: { productId: { type: "string" }, name: { type: "string" }, price: { type: "number" }, quantity: { type: "number" }, notes: { type: "string" } }, required: ["productId", "name", "price", "quantity"] } } }, required: ["items"] } } },
+  { type: "function" as const, function: { name: "call_waiter", description: "Llama al mesero.", parameters: { type: "object", properties: {}, required: [] } } },
+  { type: "function" as const, function: { name: "request_bill", description: "Solicita la cuenta.", parameters: { type: "object", properties: {}, required: [] } } },
 ];
 
 const kitchenTools = [
-  { type: "function" as const, function: { name: "get_active_orders", description: "Obtiene todas las órdenes activas (pendientes o en preparación) del restaurante.", parameters: { type: "object", properties: {}, required: [] } } },
-  { type: "function" as const, function: { name: "get_menu_with_details", description: "Obtiene el menú completo con descripciones detalladas de ingredientes y recetas.", parameters: { type: "object", properties: {}, required: [] } } },
-  { type: "function" as const, function: { name: "get_ingredient_alerts", description: "Analiza las órdenes activas y detecta ingredientes con alta demanda.", parameters: { type: "object", properties: {}, required: [] } } },
+  { type: "function" as const, function: { name: "get_active_orders", description: "Obtiene órdenes activas del restaurante.", parameters: { type: "object", properties: {}, required: [] } } },
+  { type: "function" as const, function: { name: "get_menu_with_details", description: "Obtiene el menú con recetas.", parameters: { type: "object", properties: {}, required: [] } } },
+  { type: "function" as const, function: { name: "get_ingredient_alerts", description: "Analiza demanda de ingredientes.", parameters: { type: "object", properties: {}, required: [] } } },
 ];
 
 const waiterTools = [
-  { type: "function" as const, function: { name: "get_tables_status", description: "Obtiene el estado de todas las mesas: libre, ocupada, con llamada de mesero, total acumulado.", parameters: { type: "object", properties: {}, required: [] } } },
-  { type: "function" as const, function: { name: "get_table_bill", description: "Obtiene la cuenta detallada de una mesa específica.", parameters: { type: "object", properties: { tableId: { type: "string" } }, required: ["tableId"] } } },
-  { type: "function" as const, function: { name: "get_waiter_calls", description: "Obtiene las llamadas de mesero pendientes de resolver.", parameters: { type: "object", properties: {}, required: [] } } },
+  { type: "function" as const, function: { name: "get_tables_status", description: "Muestra estado de todas las mesas.", parameters: { type: "object", properties: {}, required: [] } } },
+  { type: "function" as const, function: { name: "get_table_bill", description: "Cuenta de mesa específica.", parameters: { type: "object", properties: { tableId: { type: "string" } }, required: ["tableId"] } } },
+  { type: "function" as const, function: { name: "get_waiter_calls", description: "Muestra llamadas de mesero pendientes.", parameters: { type: "object", properties: {}, required: [] } } },
 ];
 
 const ownerTools = [
   ...waiterTools,
-  { type: "function" as const, function: { name: "get_analytics", description: "Obtiene estadísticas completas.", parameters: { type: "object", properties: {}, required: [] } } },
-  { type: "function" as const, function: { name: "get_full_menu", description: "Obtiene el menú completo con precios.", parameters: { type: "object", properties: {}, required: [] } } },
-  { type: "function" as const, function: { name: "get_tickets_history", description: "Obtiene el historial de tickets cerrados.", parameters: { type: "object", properties: {}, required: [] } } },
+  { type: "function" as const, function: { name: "get_analytics", description: "Estadísticas de ventas.", parameters: { type: "object", properties: {}, required: [] } } },
+  { type: "function" as const, function: { name: "get_full_menu", description: "Menú administrativo.", parameters: { type: "object", properties: {}, required: [] } } },
+  { type: "function" as const, function: { name: "get_tickets_history", description: "Historial de pagos.", parameters: { type: "object", properties: {}, required: [] } } },
 ];
 
 // --- LÓGICA DE EJECUCIÓN (INTACTA) ---
@@ -55,30 +55,27 @@ async function executeTool(name: string, args: any, restaurantId: string, role: 
         const ticket = await storage.getOpenTicketByTable(restaurantId, tableId);
         if (!ticket) return JSON.stringify({ total: 0, pedidos: [] });
         const orders = await storage.getOrdersByTicket(ticket.id);
-        return JSON.stringify({ total: Number(ticket.total), pedidos: orders.map(o => ({ hora: new Date(o.createdAt).toLocaleTimeString("es"), estado: o.status, items: o.itemsJson, subtotal: Number(o.total) })) });
+        return JSON.stringify({ total: Number(ticket.total), pedidos: orders.map(o => ({ hora: new Date(o.createdAt).toLocaleTimeString("es"), estado: o.status, items: o.itemsJson, total: Number(o.total) })) });
       }
       case "place_order": {
-        if (!tableId || !slug) return JSON.stringify({ error: "Datos de mesa incompletos" });
         const { items } = args;
         const total = items.reduce((sum: number, i: any) => sum + i.price * i.quantity, 0);
-        let ticket = await storage.getOpenTicketByTable(restaurantId, tableId) || await storage.createTicket({ restaurantId, tableId, status: "open", total: "0" });
-        const order = await storage.createOrder({ restaurantId, tableId, ticketId: ticket.id, itemsJson: items, status: "pending", total: total.toFixed(2) });
+        let ticket = await storage.getOpenTicketByTable(restaurantId, tableId!) || await storage.createTicket({ restaurantId, tableId: tableId!, status: "open", total: "0" });
+        const order = await storage.createOrder({ restaurantId, tableId: tableId!, ticketId: ticket.id, itemsJson: items, status: "pending", total: total.toFixed(2) });
         await storage.updateTicketTotal(ticket.id, (Number(ticket.total) + total).toFixed(2));
         const { broadcastToRestaurant } = await import("./websocket");
         broadcastToRestaurant(restaurantId, { type: "new_order", data: { order, tableId } });
         return JSON.stringify({ success: true, total: total.toFixed(2) });
       }
       case "call_waiter": {
-        if (!tableId) return JSON.stringify({ error: "Mesa no identificada" });
-        const call = await storage.createWaiterCall({ restaurantId, tableId, resolved: false });
+        const call = await storage.createWaiterCall({ restaurantId, tableId: tableId!, resolved: false });
         const { broadcastToRestaurant } = await import("./websocket");
         broadcastToRestaurant(restaurantId, { type: "waiter_call", data: { call, tableId } });
         return JSON.stringify({ success: true });
       }
       case "request_bill": {
-        if (!tableId) return JSON.stringify({ error: "Mesa no identificada" });
-        const ticket = await storage.getOpenTicketByTable(restaurantId, tableId);
-        if (!ticket) return JSON.stringify({ error: "No hay cuenta abierta" });
+        const ticket = await storage.getOpenTicketByTable(restaurantId, tableId!);
+        if (!ticket) return JSON.stringify({ error: "No hay cuenta" });
         await storage.requestBill(ticket.id);
         const { broadcastToRestaurant } = await import("./websocket");
         broadcastToRestaurant(restaurantId, { type: "bill_request", data: { tableId, ticketId: ticket.id } });
@@ -86,15 +83,26 @@ async function executeTool(name: string, args: any, restaurantId: string, role: 
       }
       case "get_active_orders": {
         const orders = await storage.getOrdersByRestaurant(restaurantId);
-        return JSON.stringify(orders.filter(o => o.status === "pending" || o.status === "preparing").map(o => ({ mesa: o.tableId, estado: o.status, items: o.itemsJson, total: Number(o.total) })));
-      }
-      case "get_tables_status": {
-        const tables = await storage.getTablesByRestaurant(restaurantId);
-        return JSON.stringify(tables.map(t => ({ mesa: t.number, estado: "Consultar panel" })));
+        return JSON.stringify(orders.filter(o => o.status !== "delivered").map(o => ({ id: o.id, mesa: o.tableId, estado: o.status, items: o.itemsJson, total: Number(o.total) })));
       }
       case "get_analytics": {
         const allOrders = await storage.getOrdersByRestaurant(restaurantId);
-        return JSON.stringify({ totalVentas: allOrders.reduce((sum, o) => sum + Number(o.total), 0), totalOrdenes: allOrders.length });
+        return JSON.stringify({ ventasTotales: allOrders.reduce((sum, o) => sum + Number(o.total), 0), totalOrdenes: allOrders.length });
+      }
+      case "get_tables_status": {
+        const tables = await storage.getTablesByRestaurant(restaurantId);
+        const allOrders = await storage.getOrdersByRestaurant(restaurantId);
+        return JSON.stringify(tables.map(t => ({ mesa: t.number, estado: allOrders.some(o => o.tableId === String(t.number) && o.status !== "delivered") ? "ocupada" : "libre" })));
+      }
+      case "get_table_bill": {
+        const { tableId: tId } = args;
+        const ticket = await storage.getOpenTicketByTable(restaurantId, tId);
+        if (!ticket) return JSON.stringify({ total: 0 });
+        return JSON.stringify({ total: Number(ticket.total), billRequested: ticket.billRequested });
+      }
+      case "get_waiter_calls": {
+        const calls = await storage.getWaiterCallsByRestaurant(restaurantId);
+        return JSON.stringify(calls.filter(c => !c.resolved).map(c => ({ mesa: c.tableId, hora: new Date(c.createdAt).toLocaleTimeString("es") })));
       }
       default: return JSON.stringify({ error: "No implementado" });
     }
@@ -103,7 +111,7 @@ async function executeTool(name: string, args: any, restaurantId: string, role: 
 
 function buildSystemPrompt(role: string, restaurantName: string, menuData: string, tableId?: string): string {
   const roleNames: Record<string, string> = { client: "Cliente", cook: "Cocinero", waiter: "Mesero", owner: "Dueño" };
-  const base = `Eres el asistente de "${restaurantName}", plataforma Pidely. Responde en español con Markdown.
+  return `Eres el asistente de "${restaurantName}", plataforma Pidely. Responde en español con Markdown.
 TU ROL: ${roleNames[role] || role}. Mesa: ${tableId || "N/A"}.
 
 MENÚ REAL DISPONIBLE:
@@ -111,51 +119,52 @@ ${menuData}
 
 REGLAS:
 1. SÓLO PUEDES HABLAR DE LO QUE ESTÁ EN EL MENÚ REAL.
-2. Si piden algo fuera del menú (ej: tacos, hamburguesas), di: "Lo sentimos, no contamos con ese platillo en nuestro menú actual."
-3. NO INVENTES PRECIOS.`;
-
-  return base;
+2. Si piden algo fuera del menú, di: "Lo sentimos, no contamos con ese platillo actualmente."
+3. NO INVENTES DATOS.`;
 }
 
 // --- HANDLER PARA ADMIN / COCINA / MESERO ---
 export async function handleAIChat(req: Request, res: Response) {
   try {
     const user = (req as any).user;
-    if (!user) return res.status(401).json({ error: "No autenticado" });
-    
-    // CORRECCIÓN: Aseguramos obtener el restaurantId sin importar el rol
-    const restaurantId = user.restaurantId;
-    if (!restaurantId) return res.status(400).json({ error: "No se encontró ID de restaurante para este usuario." });
+    if (!user || !user.restaurantId) return res.status(401).json({ error: "No autorizado" });
 
     const { message, history = [], tableId, slug } = req.body;
-    const restaurant = await storage.getRestaurant(restaurantId);
-    
-    const menuJson = await executeTool("get_menu", {}, restaurantId, user.role);
+    const restaurant = await storage.getRestaurant(user.restaurantId);
+    const menuJson = await executeTool("get_menu", {}, user.restaurantId, user.role);
+
     const systemPrompt = buildSystemPrompt(user.role, restaurant?.name || "el restaurante", menuJson, tableId);
     
-    const isFoodQuery = /taco|comida|hambre|menu|precio|platillo/i.test(message);
-    const selectedModel = (user.role === "owner" || isFoodQuery) ? POWER_MODEL : LIGHT_MODEL;
+    // MODELO PODEROSO para el staff para asegurar que no fallen las herramientas
+    const selectedModel = POWER_MODEL;
+
+    // SELECCIÓN DE TOOLS POR ROL
+    const tools = user.role === "owner" ? ownerTools : user.role === "cook" ? kitchenTools : user.role === "waiter" ? waiterTools : clientTools;
 
     const messages: any[] = [
       { role: "system", content: systemPrompt },
       ...history.filter((m: any) => m.role && (m.content !== undefined || m.tool_calls)),
-      { role: "user", content: message },
+      { role: "user", content: message }
     ];
 
-    let response = await getGroq().chat.completions.create({ model: selectedModel, messages, tools: user.role === "owner" ? ownerTools : user.role === "cook" ? kitchenTools : user.role === "waiter" ? waiterTools : clientTools, tool_choice: "auto", max_tokens: 1024, temperature: 0 });
+    let response = await getGroq().chat.completions.create({ model: selectedModel, messages, tools, tool_choice: "auto", max_tokens: 1024, temperature: 0 });
     let assistantMessage = response.choices[0].message;
 
     while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
       messages.push(assistantMessage);
-      const results = await Promise.all(assistantMessage.tool_calls.map(async (tc) => ({ role: "tool" as const, tool_call_id: tc.id, content: await executeTool(tc.function.name, JSON.parse(tc.function.arguments || "{}"), restaurantId, user.role, tableId, slug) })));
+      const results = await Promise.all(assistantMessage.tool_calls.map(async (tc) => ({
+        role: "tool" as const,
+        tool_call_id: tc.id,
+        content: await executeTool(tc.function.name, JSON.parse(tc.function.arguments || "{}"), user.restaurantId, user.role, tableId, slug)
+      })));
       messages.push(...results);
       response = await getGroq().chat.completions.create({ model: selectedModel, messages, max_tokens: 1024 });
       assistantMessage = response.choices[0].message;
     }
     res.json({ reply: assistantMessage.content || "Entendido." });
   } catch (err: any) {
-    console.error("Error en handleAIChat:", err);
-    res.status(500).json({ error: "Error en el asistente del panel administrativo." });
+    console.error("STAFF AI ERROR:", err);
+    res.status(500).json({ error: "Error en el panel de staff." });
   }
 }
 
@@ -168,7 +177,6 @@ export async function handlePublicAIChat(req: Request, res: Response) {
 
     const menuJson = await executeTool("get_menu", {}, restaurant.id, "client");
     const systemPrompt = buildSystemPrompt("client", restaurant.name, menuJson, tableId);
-    
     const isFoodQuery = /taco|comida|hambre|menu|precio|platillo/i.test(message);
     const selectedModel = isFoodQuery ? POWER_MODEL : LIGHT_MODEL;
 
@@ -183,14 +191,18 @@ export async function handlePublicAIChat(req: Request, res: Response) {
 
     while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
       messages.push(assistantMessage);
-      const results = await Promise.all(assistantMessage.tool_calls.map(async (tc) => ({ role: "tool" as const, tool_call_id: tc.id, content: await executeTool(tc.function.name, JSON.parse(tc.function.arguments || "{}"), restaurant.id, "client", tableId, slug) })));
+      const results = await Promise.all(assistantMessage.tool_calls.map(async (tc) => ({
+        role: "tool" as const,
+        tool_call_id: tc.id,
+        content: await executeTool(tc.function.name, JSON.parse(tc.function.arguments || "{}"), restaurant.id, "client", tableId, slug)
+      })));
       messages.push(...results);
       response = await getGroq().chat.completions.create({ model: selectedModel, messages, max_tokens: 1024 });
       assistantMessage = response.choices[0].message;
     }
     res.json({ reply: assistantMessage.content || "Dime en qué puedo ayudarte." });
   } catch (err: any) {
-    console.error("Error en handlePublicAIChat:", err);
+    console.error("PUBLIC AI ERROR:", err);
     res.status(500).json({ error: "Error en el chat de mesa." });
   }
 }
