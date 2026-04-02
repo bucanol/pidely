@@ -3,7 +3,6 @@ import { storage } from "./storage";
 import Groq from "groq-sdk";
 
 let groq: Groq;
-// Modelos para escalabilidad: 8b para velocidad/bajo costo, 70b para análisis profundo
 const POWER_MODEL = "llama-3.3-70b-versatile";
 const LIGHT_MODEL = "llama-3.1-8b-instant";
 
@@ -12,6 +11,7 @@ function getGroq() {
   return groq;
 }
 
+// --- TUS TOOLS SE MANTIENEN IGUAL ---
 const clientTools = [
   {
     type: "function" as const,
@@ -399,79 +399,29 @@ async function executeTool(
   }
 }
 
-function buildSystemPrompt(role: string, restaurantName: string, tableId?: string): string {
-  const roleNames: Record<string, string> = {
-    client: "Cliente en mesa",
-    cook: "Cocinero/Chef",
-    waiter: "Mesero",
-    owner: "Dueño del restaurante"
-  };
+function buildSystemPrompt(role: string, restaurantName: string, menuData: string, tableId?: string): string {
+  const base = `Eres el asistente de "${restaurantName}", plataforma Pidely. 
+RESPONDE SIEMPRE EN ESPAÑOL. Usa Markdown y saltos de línea (\n).
 
-  const base = `Eres el asistente inteligente de "${restaurantName}", una plataforma llamada Pidely. Responde siempre en el mismo idioma que el usuario. Cuando envíes información a cocina o al sistema, hazlo siempre en español. Sé conciso, amable y útil.
-TU ROL ACTUAL ES: ${roleNames[role] || role}.
+MENÚ REAL DISPONIBLE (SÓLO PUEDES VENDER ESTO):
+${menuData}
 
-REGLAS DE FORMATO:
-- Usa Markdown para dar estructura a tus respuestas.
-- Usa SIEMPRE saltos de línea (\n) entre párrafos para que el texto sea legible.
-
-REGLAS DE SEGURIDAD Y DATOS:
-- NO INVENTES PLATILLOS. Si necesitas conocer el menú, usa obligatoriamente la herramienta 'get_menu'.
-- Si un platillo no está en el resultado de la herramienta, informa que no está disponible actualmente.`;
+REGLAS DE ORO (BLINDAJE TOTAL):
+1. PROHIBIDO INVENTAR COMIDA. Si el usuario pregunta por algo que NO está en la lista de arriba (ej: TACOS, CARNITAS, HAMBURGUESAS), responde EXACTAMENTE: "Lo sentimos, no contamos con ese platillo en nuestro menú actual."
+2. No intentes ser amable inventando opciones. Si no está en el MENÚ REAL, NO EXISTE.
+3. EJEMPLO DE RESPUESTA CORRECTA:
+   Usuario: "¿Tienen tacos?"
+   Asistente: "Lo sentimos, no contamos con ese platillo en nuestro menú actual. ¿Te gustaría probar nuestras Tostadas de Atún o el Ribeye?"`;
 
   switch (role) {
     case "client":
-      return `${base}
-
-Eres el asistente de mesa para la Mesa ${tableId}. Tu rol es:
-- Ayudar al cliente a explorar el menú, sugerir platillos y combos
-- Detectar alergias o restricciones dietéticas y filtrar el menú automáticamente
-- Hacer upselling inteligente (sugerir complementos cuando el cliente pide algo)
-- Permitir que el cliente haga pedidos directamente por chat
-- Mostrar el total acumulado de su cuenta cuando lo pidan
-- Llamar al mesero o solicitar la cuenta cuando el cliente lo pida
-- Si el cliente dice que tiene alguna alergia, recuérdala durante toda la conversación y úsala para filtrar sugerencias
-
-Cuando el cliente quiera ordenar, usa la herramienta place_order con los productos exactos del menú.
-Cuando sugieras platillos, menciona siempre el precio.
-Sé cálido, eficiente y proactivo.`;
-
+      return `${base}\n\nAsistente de Mesa ${tableId}. Cíñete al menú de arriba.`;
     case "cook":
-      return `${base}
-
-Eres el asistente de cocina. Tu rol es:
-- Mostrar las órdenes activas (pendientes y en preparación)
-- Consultar ingredientes y descripciones de platillos del menú
-- Alertar sobre ingredientes con alta demanda en órdenes activas
-- Responder preguntas sobre recetas o preparación de platillos basándote en sus descripciones
-
-Sé directo y eficiente. La cocina necesita información rápida y clara.`;
-
+      return `${base}\n\nAsistente de cocina.`;
     case "waiter":
-      return `${base}
-
-Eres el asistente para meseros. Tu rol es:
-- Mostrar el estado de todas las mesas de un vistazo
-- Consultar la cuenta detallada de cualquier mesa
-- Mostrar llamadas de mesero pendientes
-- Sugerir cuándo una mesa podría necesitar atención
-
-Sé directo y eficiente.`;
-
+      return `${base}\n\nAsistente de meseros.`;
     case "owner":
-      return `${base}
-
-Eres el asistente ejecutivo del dueño de "${restaurantName}". Tienes acceso completo al negocio. Tu rol es:
-- Proporcionar analytics y estadísticas de ventas detalladas
-- Detectar patrones: horas pico, platillos más/menos vendidos, tendencias
-- Sugerir promociones basadas en datos reales del negocio
-- Sugerir ajustes de precios basados en demanda
-- Generar ideas de marketing y promociones para redes sociales
-- Mostrar estado actual del restaurante: mesas, órdenes, llamadas
-- Consultar historial de tickets y pagos
-- Dar reportes ejecutivos claros y accionables
-
-Cuando el dueño pida sugerencias de promociones o marketing, sé creativo y usa datos reales del menú y ventas.`;
-
+      return `${base}\n\nAsistente ejecutivo.`;
     default:
       return base;
   }
@@ -481,165 +431,95 @@ export async function handleAIChat(req: Request, res: Response) {
   try {
     const user = (req as any).user;
     const { message, history = [], tableId, slug } = req.body;
+    const restaurant = await storage.getRestaurant(user.restaurantId);
+    const menuJson = await executeTool("get_menu", {}, user.restaurantId, user.role);
 
-    if (!message) return res.status(400).json({ error: "Mensaje requerido" });
-    if (!user || !user.restaurantId) return res.status(401).json({ error: "Sesión no válida" });
-
-    const restaurantId = user.restaurantId;
-    const role = user.role;
-    const restaurant = await storage.getRestaurant(restaurantId);
-
-    // Selección de modelo: 70b para dueño, 8b para los demás (ahorro de tokens y velocidad)
-    const selectedModel = role === "owner" ? POWER_MODEL : LIGHT_MODEL;
-
-    const tools =
-      role === "owner" ? ownerTools :
-      role === "cook" ? kitchenTools :
-      role === "waiter" ? waiterTools :
-      clientTools;
-
-    const systemPrompt = buildSystemPrompt(role, restaurant?.name || "el restaurante", tableId);
-
-    // Limpieza de historial para evitar corrupción técnica
-    const cleanHistory = Array.isArray(history) 
-      ? history.filter((m: any) => m.role && (m.content !== undefined || m.tool_calls)) 
-      : [];
+    const systemPrompt = buildSystemPrompt(user.role, restaurant?.name || "el restaurante", menuJson, tableId);
+    
+    // MODELO PODEROSO para evitar mentiras si pregunta por comida
+    const isFoodQuery = /taco|comida|hambre|menu|precio|platillo/i.test(message);
+    const selectedModel = (user.role === "owner" || isFoodQuery) ? POWER_MODEL : LIGHT_MODEL;
 
     const messages: any[] = [
       { role: "system", content: systemPrompt },
-      ...cleanHistory,
+      ...history.filter((m: any) => m.role && (m.content !== undefined || m.tool_calls)),
       { role: "user", content: message },
     ];
 
     let response = await getGroq().chat.completions.create({
       model: selectedModel,
       messages,
-      tools,
+      tools: user.role === "owner" ? ownerTools : user.role === "cook" ? kitchenTools : user.role === "waiter" ? waiterTools : clientTools,
       tool_choice: "auto",
       max_tokens: 1024,
-      temperature: 0.1,
+      temperature: 0,
     });
 
     let assistantMessage = response.choices[0].message;
 
     while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
       messages.push(assistantMessage);
-
       const toolResults = await Promise.all(
         assistantMessage.tool_calls.map(async (tc) => {
-          try {
-            const args = JSON.parse(tc.function.arguments || "{}");
-            const result = await executeTool(tc.function.name, args, restaurantId, role, tableId, slug);
-            return {
-              role: "tool" as const,
-              tool_call_id: tc.id,
-              content: result,
-            };
-          } catch (e) {
-            return {
-              role: "tool" as const,
-              tool_call_id: tc.id,
-              content: JSON.stringify({ error: "Error procesando herramienta" }),
-            };
-          }
+          const result = await executeTool(tc.function.name, JSON.parse(tc.function.arguments || "{}"), user.restaurantId, user.role, tableId, slug);
+          return { role: "tool" as const, tool_call_id: tc.id, content: result };
         })
       );
-
       messages.push(...toolResults);
-
-      response = await getGroq().chat.completions.create({
-        model: selectedModel,
-        messages,
-        tools,
-        tool_choice: "auto",
-        max_tokens: 1024,
-      });
-
+      response = await getGroq().chat.completions.create({ model: selectedModel, messages, max_tokens: 1024 });
       assistantMessage = response.choices[0].message;
     }
-
-    res.json({ reply: assistantMessage.content || "Lo siento, no pude procesar tu solicitud." });
-
+    res.json({ reply: assistantMessage.content });
   } catch (err: any) {
-    console.error("AI error:", err);
-    res.status(500).json({ error: "Error del asistente. Por favor intenta de nuevo." });
+    res.status(500).json({ error: "Error del asistente." });
   }
 }
 
 export async function handlePublicAIChat(req: Request, res: Response) {
   try {
     const { message, history = [], tableId, slug } = req.body;
-
-    if (!message) return res.status(400).json({ error: "Mensaje requerido" });
-    if (!slug || !tableId) return res.status(400).json({ error: "Mesa o restaurante no identificado" });
-
     const restaurant = await storage.getRestaurantBySlug(slug);
-    if (!restaurant) return res.status(404).json({ error: "Restaurante no encontrado" });
+    if (!restaurant) return res.status(404).json({ error: "No encontrado" });
 
-    const restaurantId = restaurant.id;
-    const systemPrompt = buildSystemPrompt("client", restaurant.name, tableId);
+    const menuJson = await executeTool("get_menu", {}, restaurant.id, "client");
 
-    const cleanHistory = Array.isArray(history) 
-      ? history.filter((m: any) => m.role && (m.content !== undefined || m.tool_calls)) 
-      : [];
+    const systemPrompt = buildSystemPrompt("client", restaurant.name, menuJson, tableId);
+    
+    // MODELO PODEROSO para clientes si preguntan por comida
+    const isFoodQuery = /taco|comida|hambre|menu|precio|platillo/i.test(message);
+    const selectedModel = isFoodQuery ? POWER_MODEL : LIGHT_MODEL;
 
     const messages: any[] = [
       { role: "system", content: systemPrompt },
-      ...cleanHistory,
+      ...history.filter((m: any) => m.role && (m.content !== undefined || m.tool_calls)),
       { role: "user", content: message },
     ];
 
     let response = await getGroq().chat.completions.create({
-      model: LIGHT_MODEL, // Siempre ligero para clientes públicos (más rápido)
+      model: selectedModel,
       messages,
       tools: clientTools,
       tool_choice: "auto",
       max_tokens: 1024,
-      temperature: 0.1,
+      temperature: 0,
     });
 
     let assistantMessage = response.choices[0].message;
 
     while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
       messages.push(assistantMessage);
-
       const toolResults = await Promise.all(
         assistantMessage.tool_calls.map(async (tc) => {
-          try {
-            const args = JSON.parse(tc.function.arguments || "{}");
-            const result = await executeTool(tc.function.name, args, restaurantId, "client", tableId, slug);
-            return {
-              role: "tool" as const,
-              tool_call_id: tc.id,
-              content: result,
-            };
-          } catch (e) {
-            return {
-              role: "tool" as const,
-              tool_call_id: tc.id,
-              content: JSON.stringify({ error: "Error en herramienta" }),
-            };
-          }
+          const result = await executeTool(tc.function.name, JSON.parse(tc.function.arguments || "{}"), restaurant.id, "client", tableId, slug);
+          return { role: "tool" as const, tool_call_id: tc.id, content: result };
         })
       );
-
       messages.push(...toolResults);
-
-      response = await getGroq().chat.completions.create({
-        model: LIGHT_MODEL,
-        messages,
-        tools: clientTools,
-        tool_choice: "auto",
-        max_tokens: 1024,
-      });
-
+      response = await getGroq().chat.completions.create({ model: selectedModel, messages, max_tokens: 1024 });
       assistantMessage = response.choices[0].message;
     }
-
-    res.json({ reply: assistantMessage.content || "Lo siento, no pude procesar tu solicitud." });
-
+    res.json({ reply: assistantMessage.content });
   } catch (err: any) {
-    console.error("AI public error:", err);
-    res.status(500).json({ error: "Error del asistente. Por favor intenta de nuevo." });
+    res.status(500).json({ error: "Error del asistente." });
   }
 }
